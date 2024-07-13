@@ -1,0 +1,21 @@
+{
+  "name": "vite-hmr-demo",
+  "version": "1.0.0",
+  "description": "ESM-HMR 实例 demo 实现",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node node/server.js"
+  },
+  "type": "module",
+  "devDependencies": {
+    "chokidar": "^3.6.0",
+    "connect": "^3.7.0",
+    "es-module-lexer": "^1.5.4",
+    "esbuild": "^0.21.5",
+    "magic-string": "^0.30.10",
+    "sirv": "^2.0.4",
+    "ws": "^8.17.1"
+  },
+  "author": "Leo",
+  "license": "MIT"
+}

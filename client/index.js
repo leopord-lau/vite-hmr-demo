@@ -62,7 +62,7 @@ const hmrClient = {
           return undefined;
         }
       });
-      mod.callback(...data);
+      mod.callback && mod.callback(...data);
     } catch (e) {
       console.error(e.message);
       console.error("hmr update fail.");
@@ -118,4 +118,38 @@ export function createHMRContext(src) {
     },
   };
   return context;
+}
+
+const sheetsMap = new Map();
+
+let lastInsertedStyle;
+
+export function updateStyle(id, content) {
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement("style");
+    style.setAttribute("type", "text/css");
+    style.setAttribute("data-hmr-id", id);
+    style.textContent = content;
+    if (!lastInsertedStyle) {
+      document.head.appendChild(style);
+      setTimeout(() => {
+        lastInsertedStyle = undefined;
+      }, 0);
+    } else {
+      lastInsertedStyle.insertAdjacentElement("afterend", style);
+    }
+    lastInsertedStyle = style;
+  } else {
+    style.textContent = content;
+  }
+  sheetsMap.set(id, style);
+}
+
+export function removeStyle(id) {
+  const style = sheetsMap.get(id);
+  if (style) {
+    document.head.removeChild(style);
+    sheetsMap.delete(id);
+  }
 }

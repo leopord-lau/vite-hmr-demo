@@ -2,6 +2,7 @@ import { filename as file1 } from "./nested2/file1.js";
 import { filename as file2 } from "./nested2/file2.js";
 import { value } from "./nested2/invalidate.js";
 import { prune } from "./nested2/prune.js";
+import "../../index.css";
 
 let dom = document.querySelector(".invalidate");
 if (!dom) {

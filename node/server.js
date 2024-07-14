@@ -151,6 +151,7 @@ async function scanDependence() {
     bundle: true,
     format: "esm",
     plugins: [scan()],
+    outdir: "bundle",
   });
   return new Promise((resolve) => {
     result.rebuild().then(resolve);
@@ -232,7 +233,7 @@ middleware.use(async (req, res, next) => {
     );
     const code = await fs.readFile(filePath, "utf-8");
     return res.end(code);
-  } else if (req.url.endsWith(".js")) {
+  } else if (req.url.endsWith(".js") || req.url.endsWith(".css")) {
     if (req.url === "/client/index.js") {
       req.url = "/index.js";
       return next();

@@ -1,3 +1,4 @@
-body {
-  background-color: #646cff;
+@import url('./body.css');
+div{
+  background-color: lightcoral;
 }

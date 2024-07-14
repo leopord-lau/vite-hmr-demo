@@ -4,6 +4,8 @@ import nodePath from "node:path";
 import fs from "node:fs/promises";
 import { init, parse as parseImports } from "es-module-lexer";
 import MagicString from "magic-string";
+import postcss from "postcss";
+import atImport from "postcss-import";
 
 export function getModuleNode(path) {
   if (!moduleGraph.get(path)) {
@@ -36,7 +38,7 @@ export function scan() {
         }
       });
       // 提前扫描需要处理得文件
-      build.onLoad({ filter: /.js/ }, async function (module) {
+      build.onLoad({ filter: /.js|.css/ }, async function (module) {
         module.path = module.path.replaceAll("\\", "/");
         scanTransform(module.path);
       });
@@ -62,6 +64,20 @@ export async function scanTransform(path) {
     console.error(`read file ${path} fail`);
     process.exit(0);
   }
+  const moduleNode = idToModuleMap.get(path);
+  if (!moduleNode) {
+    return;
+  }
+
+  if (path.endsWith(".css")) {
+    const contents = await formatCSS(path, file, moduleNode.url);
+    moduleNode.isSelfAccepting = true;
+    moduleNode.content = contents;
+    return {
+      contents,
+      loader: "css",
+    };
+  }
   let s = new MagicString(file);
   await init;
   let imports = [];
@@ -72,9 +88,9 @@ export async function scanTransform(path) {
     console.error(`file ${path} parse error`);
     process.exit(0);
   }
-  const moduleNode = idToModuleMap.get(path);
   if (!imports.length) {
-    moduleNode && (() => (moduleNode.isSelfAccepting = false));
+    moduleNode.isSelfAccepting = false;
+    moduleNode.content = file;
     return {
       contents: file,
       loader: "js",
@@ -154,17 +170,51 @@ export async function scanTransform(path) {
       });
     });
   }
+  if (path.endsWith(".js")) {
+    const contents =
+      "import { createHMRContext } from '/client/index.js';\n" +
+      `const hot = createHMRContext('${moduleNode.url}');\n` +
+      `import.meta.hot = hot;\n` +
+      s.toString();
+    moduleNode.content = contents;
+    return {
+      contents,
+      loader: "js",
+    };
+  }
+}
 
-  const contents =
-    "import { createHMRContext } from '/client/index.js';\n" +
-    `const hot = createHMRContext('${moduleNode.url}');\n` +
-    `import.meta.hot = hot;\n` +
-    s.toString();
-  moduleNode.content = contents;
-  return {
-    contents,
-    loader: "js",
-  };
+async function formatCSS(id, file, url) {
+  file = await postcss().use(atImport()).process(file, {
+    from: id,
+  });
+
+  file.messages.forEach((dep) => {
+    dep.file = dep.file.replaceAll("\\", "/");
+    dep.parent = dep.parent.replaceAll("\\", "/");
+    const relativePath = nodePath
+      .relative(dep.parent, dep.file)
+      .replace(/^\.\.\//, "./");
+    const parentNode = idToModuleMap.get(dep.parent);
+    let node = idToModuleMap.get(dep.file);
+    if (!node) {
+      node = getModuleNode(relativePath);
+      idToModuleMap.set(dep.file, node);
+      node.id = dep.file;
+    }
+    parentNode.importedModules.set(relativePath, node);
+    node.importers.add(parentNode);
+  });
+
+  const content =
+    "import { updateStyle, removeStyle, createHMRContext } from '/client/index.js';\n" +
+    `const hmr_id = ${JSON.stringify(url)};\n` +
+    `const hmr_css = ${JSON.stringify(file.css)};\n` +
+    `updateStyle(hmr_id, hmr_css);\n` +
+    `import.meta.hot = createHMRContext(${JSON.stringify(url)});\n` +
+    "import.meta.hot.accept([]);\n" +
+    "import.meta.hot.prune(()=>removeStyle(hmr_id))";
+  return content;
 }
 
 function updateModuleInfo(moduleNode, importedModules) {
@@ -193,6 +243,7 @@ function updateModuleInfo(moduleNode, importedModules) {
       if (!mod.importers.size) {
         noLongerImported.add(mod.url);
       }
+      mod.modifyTimestamp = new Date().getTime();
     }
   });
   moduleNode.importedModules = nextImportedNodes;
@@ -209,9 +260,11 @@ function getAbsolutePath(relative, refer) {
 }
 
 export function getDoubleDot(url) {
-  const singleDot = /(\.\/)/g;
+  const singleDot = /^(\.\/)/g;
   if (url.match(singleDot)?.length === 1) {
     url = url.replace(singleDot, "../");
+  } else {
+    url = "../" + url;
   }
   return url;
 }
@@ -222,6 +275,7 @@ export function getRelativePath(url, relativeUrl) {
     .relative(process.cwd(), nodePath.resolve(url, relativeUrl))
     .replaceAll("\\", "/")
     .replace(/^src/, "");
+
   return path;
 }
 
